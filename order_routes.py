@@ -27,12 +27,11 @@ async def hello(token: str = Depends(oauth2_scheme)):
         token (str, optional): _description_. Defaults to Depends(oauth2_scheme).
 
     Raises:
-        HTTPException: _description_
-        HTTPException: _description_
-        HTTPException: _description_
+        HTTPException: Token expired
+        HTTPException: Invalid token
 
     Returns:
-        _type_: _description_
+        dict: Welcome message
     """
     try:
         # Decode the JWT token
@@ -55,6 +54,21 @@ async def hello(token: str = Depends(oauth2_scheme)):
 
 @order_router.post("/order")
 async def place_an_order(order: OrderModel, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """_summary_
+
+    Args:
+        order (OrderModel): Order details
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+        HTTPException: User not found
+
+    Returns:
+        dict: Created order details
+    """
     try:
         # Decode the JWT token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -95,6 +109,21 @@ async def place_an_order(order: OrderModel, token: str = Depends(oauth2_scheme),
     
 @order_router.get("/orders")
 async def list_all_orders(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """_summary_
+
+    Args:
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+        HTTPException: User not found
+        HTTPException: Not authorized
+
+    Returns:
+        list: All orders
+    """
     try:
         # Decode the JWT token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -127,6 +156,23 @@ async def list_all_orders(token: str = Depends(oauth2_scheme), db: Session = Dep
     
 @order_router.get("/orders/{id}")
 async def get_order_by_id(id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """_summary_
+
+    Args:
+        id (int): Order ID
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+        HTTPException: User not found
+        HTTPException: Not authorized
+        HTTPException: Order not found
+
+    Returns:
+        dict: Order details
+    """
     try:
         # Decode the JWT token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -163,6 +209,20 @@ async def get_order_by_id(id: int, token: str = Depends(oauth2_scheme), db: Sess
 # This lists the orders made by the currently logged in users
 @order_router.get('/user/orders')
 async def get_user_orders(token: str=Depends(oauth2_scheme), db: Session=Depends(get_db)):
+    """_summary_
+
+    Args:
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+        HTTPException: User not found
+
+    Returns:
+        list: Orders of the currently logged-in user
+    """
     try:
         payload=jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username=payload.get("sub")
@@ -187,6 +247,22 @@ async def get_user_orders(token: str=Depends(oauth2_scheme), db: Session=Depends
         
 @order_router.get('/user/order/{id}/')
 async def get_specific_order(id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """_summary_
+
+    Args:
+        id (int): Order ID
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+        HTTPException: User not found
+        HTTPException: Order not found
+
+    Returns:
+        dict: Details of the specific order belonging to the user
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
@@ -220,6 +296,23 @@ async def get_specific_order(id: int, token: str = Depends(oauth2_scheme), db: S
         
 @order_router.put('/order/update/{id}/')
 async def update_order(id: int, order: OrderModel, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """_summary_
+
+    Args:
+        id (int): Order ID
+        order (OrderModel): Updated order data
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+        HTTPException: User not found
+        HTTPException: Order not found
+
+    Returns:
+        dict: Updated order details
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
@@ -257,6 +350,25 @@ async def update_order(id: int, order: OrderModel, token: str = Depends(oauth2_s
 
 @order_router.patch('/order/update/{id}')
 async def update_order_status(id: int, order: OrderStatusModel, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """_summary_
+
+    Args:
+        id (int): Order ID
+        order (OrderStatusModel): New order status
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+        HTTPException: User not found
+        HTTPException: Permission denied
+        HTTPException: Order not found
+        HTTPException: Invalid status
+
+    Returns:
+        dict: Updated order details with new status
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
@@ -307,11 +419,22 @@ async def update_order_status(id: int, order: OrderStatusModel, token: str = Dep
     
 @order_router.delete('/order/delete/{id}/', status_code=status.HTTP_204_NO_CONTENT)
 async def delete_an_order(id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    """
-    ## Delete an Order
-    This deletes an order by its ID.
-    """
+    """_summary_
 
+    Args:
+        id (int): Order ID
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+        HTTPException: User not found
+        HTTPException: Order not found
+
+    Returns:
+        None: No response body (204 No Content)
+    """
     try:
         # Decode the JWT token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])

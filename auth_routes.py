@@ -26,6 +26,18 @@ session = SessionLocal()
 
 @auth_router.get("/")
 async def hello(token: str = Depends(oauth2_scheme)):
+    """_summary_
+
+    Args:
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+
+    Raises:
+        HTTPException: Token expired
+        HTTPException: Invalid token
+
+    Returns:
+        dict: Greeting message with the username
+    """
     try:
         # Decode the token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -46,6 +58,18 @@ async def hello(token: str = Depends(oauth2_scheme)):
 @auth_router.post('/signup', response_model=SignUpModel,
                   status_code=status.HTTP_201_CREATED)
 async def signup(user:SignUpModel):
+    """_summary_
+
+    Args:
+        user (SignUpModel): User registration data
+
+    Raises:
+        HTTPException: User with the same email already exists
+        HTTPException: User with the same username already exists
+
+    Returns:
+        dict: Created user details
+    """
     
     db_email=session.query(User).filter(User.email==user.email).first()
     
@@ -79,6 +103,18 @@ async def signup(user:SignUpModel):
 # Login Route
 @auth_router.post('/login')
 async def login(user: LoginModel, db: Session = Depends(get_db)):
+    """_summary_
+
+    Args:
+        user (LoginModel): User login credentials
+        db (Session): Database session
+
+    Raises:
+        HTTPException: Invalid username or password
+
+    Returns:
+        dict: Access token and refresh token
+    """
     db_user = db.query(User).filter(User.username == user.username).first()
 
     if db_user and check_password_hash(db_user.password, user.password):
@@ -108,6 +144,18 @@ async def login(user: LoginModel, db: Session = Depends(get_db)):
 
 @auth_router.post("/refresh")
 async def refresh_token(token: str = Depends(oauth2_scheme)):
+    """_summary_
+
+    Args:
+        token (str, optional): Defaults to Depends(oauth2_scheme).
+
+    Raises:
+        HTTPException: Refresh token expired
+        HTTPException: Invalid refresh token
+
+    Returns:
+        dict: New access token
+    """
     try:
         # Decode the refresh token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
