@@ -10,11 +10,12 @@ from fastapi.encoders import jsonable_encoder
 from auth_routes import get_current_user
 import logging
 import stripe
+import os
 
 # Secret Key (Use same one from login)
-SECRET_KEY = "cfbb97543a92c477a457f225ebb61f8b580907f7de5c22680677cfa54ca262da"
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret_key")
 ALGORITHM = "HS256"
-stripe.api_key = "sk_test_51R2pSlEF1zwsTrESuEWfMCejOCsFw26SzO781KUFTaiKJ15lN1VDR2bg3qkfqA3qMCJjjg7QOrKafnHMsSduBni000ULECEpj6"
+stripe.api_key = os.getenv("STRIPE_API_KEY")
 
 order_router = APIRouter(
     prefix="/orders",
@@ -545,12 +546,12 @@ async def delete_an_order(id: int, token: str = Depends(oauth2_scheme), db: Sess
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     
     
-# ✅ Stripe Payment Endpoint
+# Stripe Payment Endpoint
 @order_router.post("/payment/{order_id}")
 async def process_payment(order_id: int, user: int = Depends(get_current_user), db: Session = Depends(get_db)):
     """Process a real payment using Stripe."""
     
-    order = db.query(Order).filter(Order.id == order_id, Order.user_id == user).first()  # 🔥 Fix here!
+    order = db.query(Order).filter(Order.id == order_id, Order.user_id == user).first()  
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found or not accessible")
