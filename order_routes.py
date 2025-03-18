@@ -7,10 +7,14 @@ from schemas import OrderModel, OrderStatusModel
 from database import get_db
 from sqlalchemy.orm import Session
 from fastapi.encoders import jsonable_encoder
+from auth_routes import get_current_user
+import logging
+import stripe
 
 # Secret Key (Use same one from login)
 SECRET_KEY = "cfbb97543a92c477a457f225ebb61f8b580907f7de5c22680677cfa54ca262da"
 ALGORITHM = "HS256"
+stripe.api_key = "sk_test_51R2pSlEF1zwsTrESuEWfMCejOCsFw26SzO781KUFTaiKJ15lN1VDR2bg3qkfqA3qMCJjjg7QOrKafnHMsSduBni000ULECEpj6"
 
 order_router = APIRouter(
     prefix="/orders",
@@ -19,7 +23,10 @@ order_router = APIRouter(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
-@order_router.get("/")
+# ✅ Store Orders
+ORDERS = []
+
+@order_router.get("/hello")
 async def hello(token: str = Depends(oauth2_scheme)):
     """_summary_
 
@@ -52,62 +59,95 @@ async def hello(token: str = Depends(oauth2_scheme)):
     return {"message": "Hello World"}
 
 
-@order_router.post("/order")
-async def place_an_order(order: OrderModel, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    """_summary_
+# @order_router.post("/order")
+# async def place_an_order(order: OrderModel, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+#     """_summary_
 
-    Args:
-        order (OrderModel): Order details
-        token (str, optional): Defaults to Depends(oauth2_scheme).
-        db (Session): Database session
+#     Args:
+#         order (OrderModel): Order details
+#         token (str, optional): Defaults to Depends(oauth2_scheme).
+#         db (Session): Database session
 
-    Raises:
-        HTTPException: Token expired
-        HTTPException: Invalid token
-        HTTPException: User not found
+#     Raises:
+#         HTTPException: Token expired
+#         HTTPException: Invalid token
+#         HTTPException: User not found
 
-    Returns:
-        dict: Created order details
-    """
-    try:
-        # Decode the JWT token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
+#     Returns:
+#         dict: Created order details
+#     """
+#     try:
+#         # Decode the JWT token
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+#         username = payload.get("sub")
 
-        if not username:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+#         if not username:
+#             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-        # Fetch the user from the database
-        user = db.query(User).filter(User.username == username).first()
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+#         # Fetch the user from the database
+#         user = db.query(User).filter(User.username == username).first()
+#         if not user:
+#             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-        # Create a new order (Ensure `OrderModel` has a `user_id` field)
-        new_order = Order(
-            pizza_size=order.pizza_size,
-            quantity=order.quantity,
-            user_id=user.id  # Fix: using `user_id` instead of `user`
-        )
+#         # Create a new order (Ensure `OrderModel` has a `user_id` field)
+#         new_order = Order(
+#             pizza_size=order.pizza_size,
+#             quantity=order.quantity,
+#             user_id=user.id  # Fix: using `user_id` instead of `user`
+#         )
 
-        db.add(new_order)
-        db.commit()
-        db.refresh(new_order)
+#         db.add(new_order)
+#         db.commit()
+#         db.refresh(new_order)
 
-        return {
-            "pizza_size": new_order.pizza_size,
-            "quantity": new_order.quantity,
-            "id": new_order.id,
-            "order_status": new_order.order_status
-        }
+#         return {
+#             "pizza_size": new_order.pizza_size,
+#             "quantity": new_order.quantity,
+#             "id": new_order.id,
+#             "order_status": new_order.order_status
+#         }
 
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
+#     except jwt.ExpiredSignatureError:
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
     
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+#     except jwt.InvalidTokenError:
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     
     
-@order_router.get("/orders")
+@order_router.post("/order", status_code=status.HTTP_201_CREATED)
+async def place_an_order(
+    order: OrderModel, 
+    user: dict = Depends(get_current_user),  # ✅ Require Login
+    db: Session = Depends(get_db)
+):
+    """Place an order (Requires authentication)."""
+    
+    # ✅ Fetch the user from the database
+    db_user = db.query(User).filter(User.username == user["username"]).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # ✅ Create a new order
+    new_order = Order(
+        pizza_size=order.pizza_size,
+        quantity=order.quantity,
+        user_id=db_user.id  # ✅ Assign order to logged-in user
+    )
+
+    db.add(new_order)
+    db.commit()
+    db.refresh(new_order)
+
+    logging.info(f"🛒 {user['username']} placed an order: {order}")
+
+    return {
+        "pizza_size": new_order.pizza_size.value,  # ✅ Extract only the string value
+        "quantity": new_order.quantity,
+        "id": new_order.id,
+        "order_status": new_order.order_status.value  # ✅ Extract only the string value
+    }
+    
+@order_router.get("/")
 async def list_all_orders(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """_summary_
 
@@ -294,6 +334,58 @@ async def get_specific_order(id: int, token: str = Depends(oauth2_scheme), db: S
 
         
         
+# @order_router.put('/order/update/{id}/')
+# async def update_order(id: int, order: OrderModel, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+#     """_summary_
+
+#     Args:
+#         id (int): Order ID
+#         order (OrderModel): Updated order data
+#         token (str, optional): Defaults to Depends(oauth2_scheme).
+#         db (Session): Database session
+
+#     Raises:
+#         HTTPException: Token expired
+#         HTTPException: Invalid token
+#         HTTPException: User not found
+#         HTTPException: Order not found
+
+#     Returns:
+#         dict: Updated order details
+#     """
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+#         username = payload.get("sub")
+        
+#         # if username is empty
+#         if not username:
+#             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        
+#         # Fetch the user from the database
+#         current_user = db.query(User).filter(User.username == username).first()
+#         if not current_user:
+#             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+#         # Find the order by ID and ensure it belongs to the user
+#         order_to_update = db.query(Order).filter(Order.id == id, Order.user_id == current_user.id).first()
+#         if not order_to_update:
+#             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+        
+#         # Update order details
+#         order_to_update.quantity = order.quantity
+#         order_to_update.pizza_size = order.pizza_size
+
+#         db.commit()
+#         db.refresh(order_to_update)
+        
+#         return jsonable_encoder(order_to_update)
+
+#     except jwt.ExpiredSignatureError:
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired, please log in again")
+
+#     except jwt.InvalidTokenError:
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token, please check your credentials")
+
 @order_router.put('/order/update/{id}/')
 async def update_order(id: int, order: OrderModel, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """_summary_
@@ -338,7 +430,12 @@ async def update_order(id: int, order: OrderModel, token: str = Depends(oauth2_s
         db.commit()
         db.refresh(order_to_update)
         
-        return jsonable_encoder(order_to_update)
+        return {
+            "id": order_to_update.id,
+            "quantity": order_to_update.quantity,
+            "pizza_size": order_to_update.pizza_size.value,  # Extract string value of pizza_size
+            "order_status": order_to_update.order_status.value  # Extract string value of order_status
+        }
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired, please log in again")
@@ -346,78 +443,60 @@ async def update_order(id: int, order: OrderModel, token: str = Depends(oauth2_s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token, please check your credentials")
 
-        
 
 @order_router.patch('/order/update/{id}')
 async def update_order_status(id: int, order: OrderStatusModel, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    """_summary_
+    """Update the order status (only accessible by staff)."""
 
-    Args:
-        id (int): Order ID
-        order (OrderStatusModel): New order status
-        token (str, optional): Defaults to Depends(oauth2_scheme).
-        db (Session): Database session
-
-    Raises:
-        HTTPException: Token expired
-        HTTPException: Invalid token
-        HTTPException: User not found
-        HTTPException: Permission denied
-        HTTPException: Order not found
-        HTTPException: Invalid status
-
-    Returns:
-        dict: Updated order details with new status
-    """
     try:
+        # Decode the JWT token to get user info
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
-        
-        # if username is empty
+
+        # Check if username exists
         if not username:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        
-        # Fetch the user from the database
+
+        # Fetch the current user from the database
         current_user = db.query(User).filter(User.username == username).first()
         if not current_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-        # Ensure the user is a staff member
+        # Check if the user is a staff member
         if not current_user.is_staff:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
-        
-        # Find the order to update
+
+        # Fetch the order to update
         order_to_update = db.query(Order).filter(Order.id == id).first()
         if not order_to_update:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-        
-        
+
         # Extract valid statuses from the Order model
         valid_statuses = {status[0] for status in Order.ORDER_STATUSES}
 
-        # Convert input order status to uppercase and validate
-        new_status = order.order_status.upper()
+        # Convert input status to uppercase and validate
+        new_status = order.order_status.upper()  # Ensure the status is uppercase to match database values
         if new_status not in valid_statuses:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid status '{new_status}'. Allowed statuses: {valid_statuses}"
             )
-        
-        # Update the order status
+
+        # Update the order's status
         order_to_update.order_status = new_status
         db.commit()
         db.refresh(order_to_update)
 
+        # Return the updated order status with the order details
         return jsonable_encoder(order_to_update)
-    
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
 
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     
-    
-@order_router.delete('/order/delete/{id}/', status_code=status.HTTP_204_NO_CONTENT)
+@order_router.delete('/order/delete/{id}', status_code=status.HTTP_204_NO_CONTENT)
 async def delete_an_order(id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """_summary_
 
@@ -464,3 +543,43 @@ async def delete_an_order(id: int, token: str = Depends(oauth2_scheme), db: Sess
 
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    
+    
+# ✅ Stripe Payment Endpoint
+@order_router.post("/payment/{order_id}")
+async def process_payment(order_id: int, user: int = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Process a real payment using Stripe."""
+    
+    order = db.query(Order).filter(Order.id == order_id, Order.user_id == user).first()  # 🔥 Fix here!
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found or not accessible")
+
+    if order.paid:
+        raise HTTPException(status_code=400, detail="Order is already paid")
+
+    # ✅ Create Stripe Payment Intent
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=int(order.quantity * 10 * 100),  # Price: $10 per pizza (converted to cents)
+            currency="usd",
+            payment_method_types=["card"],
+            metadata={"order_id": order.id, "user_id": user}  # 🔥 Fix here!
+        )
+
+        # ✅ Store Stripe Payment ID
+        order.stripe_payment_id = intent["id"]
+        db.commit()
+        db.refresh(order)
+
+        logging.info(f"💳 Payment initiated for order {order_id}: {intent['id']}")
+
+        return {
+            "client_secret": intent["client_secret"],  # ✅ Send this to the frontend for payment
+            "order_id": order.id,
+            "amount": order.quantity * 10
+        }
+
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=f"Payment failed: {str(e)}")
+    
